@@ -1,0 +1,62 @@
+# poc2 owns the node's 8 GPUs. Each child is guaranteed 1; the other 6 are surplus.
+apiVersion: scheduling.run.ai/v2
+kind: Queue
+metadata:
+  name: poc2
+spec:
+  resources:
+    cpu:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+    gpu:
+      quota: 8
+      limit: 8
+      overQuotaWeight: 1
+    memory:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+---
+# Training gets its 1 guaranteed GPU and nothing more.
+apiVersion: scheduling.run.ai/v2
+kind: Queue
+metadata:
+  name: poc2-train
+spec:
+  parentQueue: poc2
+  resources:
+    cpu:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+    gpu:
+      quota: 1
+      limit: 1
+      overQuotaWeight: 1
+    memory:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+---
+# Inference gets its 1 guaranteed GPU, may use the surplus, and is served first (priority above the default 100).
+apiVersion: scheduling.run.ai/v2
+kind: Queue
+metadata:
+  name: poc2-infer
+spec:
+  parentQueue: poc2
+  priority: 200
+  resources:
+    cpu:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+    gpu:
+      quota: 1
+      limit: -1
+      overQuotaWeight: 1
+    memory:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1

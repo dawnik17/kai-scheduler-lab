@@ -16,7 +16,7 @@ kind: Deployment
 metadata:
   name: infer-burst
 spec:
-  replicas: 0
+  replicas: 1
   selector:
     matchLabels:
       app: infer-burst

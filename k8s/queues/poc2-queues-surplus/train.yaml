@@ -1,7 +1,7 @@
 apiVersion: resource.k8s.io/v1
 kind: ResourceClaimTemplate
 metadata:
-  name: infer-gpu
+  name: train-gpu
 spec:
   spec:
     devices:
@@ -13,13 +13,14 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: infer
+  name: train
 spec:
-  backoffLimit: 0
+  backoffLimit: 100
   template:
     metadata:
       labels:
-        priorityClassName: build-preemptible
+        kai.scheduler/queue: poc2-train
+        priorityClassName: train
     spec:
       schedulerName: kai-scheduler
       restartPolicy: Never
@@ -28,12 +29,12 @@ spec:
         runAsGroup: 2572
       resourceClaims:
         - name: gpu
-          resourceClaimTemplateName: infer-gpu
+          resourceClaimTemplateName: train-gpu
       containers:
-        - name: infer
+        - name: train
           image: vllm/vllm-openai:v0.32.0
-          workingDir: /sadata/nikkothari/kai-scheduler-lab
-          command: ["python3", "serve/infer.py"]
+          workingDir: /sadata/nikkothari/kai-scheduler-lab/train
+          command: ["/sadata/nikkothari/default/bin/torchrun", "--nproc_per_node=1", "train.py"]
           env:
             - name: HOME
               value: /sadata/nikkothari/kai-scheduler-lab/.cache/home
