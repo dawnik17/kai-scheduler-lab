@@ -9,8 +9,8 @@ spec:
       limit: -1
       overQuotaWeight: 1
     gpu:
-      quota: -1
-      limit: -1
+      quota: 8
+      limit: 8
       overQuotaWeight: 1
     memory:
       quota: -1
@@ -29,8 +29,8 @@ spec:
       limit: -1
       overQuotaWeight: 1
     gpu:
-      quota: 1
-      limit: 1
+      quota: 8
+      limit: 8
       overQuotaWeight: 1
     memory:
       quota: -1

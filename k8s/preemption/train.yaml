@@ -9,6 +9,7 @@ spec:
         - name: gpu
           exactly:
             deviceClassName: gpu.nvidia.com
+            count: 4
 ---
 apiVersion: batch/v1
 kind: Job
@@ -19,7 +20,7 @@ spec:
   template:
     metadata:
       labels:
-        kai.scheduler/queue: poc2-train
+        kai.scheduler/queue: poc1
         priorityClassName: train
     spec:
       schedulerName: kai-scheduler
@@ -34,7 +35,7 @@ spec:
         - name: train
           image: vllm/vllm-openai:v0.32.0
           workingDir: /sadata/nikkothari/kai-scheduler-lab/train
-          command: ["/sadata/nikkothari/default/bin/torchrun", "--nproc_per_node=1", "train.py"]
+          command: ["/sadata/nikkothari/default/bin/torchrun", "--nproc_per_node=4", "train.py"]
           env:
             - name: HOME
               value: /sadata/nikkothari/kai-scheduler-lab/.cache/home
@@ -49,7 +50,13 @@ spec:
           volumeMounts:
             - name: sadata
               mountPath: /sadata/nikkothari
+            - name: shm
+              mountPath: /dev/shm
       volumes:
         - name: sadata
           persistentVolumeClaim:
             claimName: req-688-nikkothari-sadata-pvc
+        # NCCL needs more shared memory than the 64 MB a pod gets by default
+        - name: shm
+          emptyDir:
+            medium: Memory

@@ -1,7 +1,7 @@
 apiVersion: resource.k8s.io/v1
 kind: ResourceClaimTemplate
 metadata:
-  name: train-gpus
+  name: infer-gpu
 spec:
   spec:
     devices:
@@ -9,33 +9,35 @@ spec:
         - name: gpu
           exactly:
             deviceClassName: gpu.nvidia.com
-            count: 4
 ---
-apiVersion: batch/v1
-kind: Job
+# Baseline vLLM servers on inference's 2 guaranteed GPUs: non-preemptible.
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: train
+  name: infer
 spec:
-  backoffLimit: 100
+  replicas: 2
+  selector:
+    matchLabels:
+      app: infer
   template:
     metadata:
       labels:
-        kai.scheduler/queue: default-queue
-        priorityClassName: train
+        app: infer
+        kai.scheduler/queue: poc2-infer
+        priorityClassName: inference
     spec:
       schedulerName: kai-scheduler
-      restartPolicy: Never
       securityContext:
         runAsUser: 2572
         runAsGroup: 2572
       resourceClaims:
-        - name: gpus
-          resourceClaimTemplateName: train-gpus
+        - name: gpu
+          resourceClaimTemplateName: infer-gpu
       containers:
-        - name: train
+        - name: vllm
           image: vllm/vllm-openai:v0.32.0
-          workingDir: /sadata/nikkothari/kai-scheduler-lab/train
-          command: ["/sadata/nikkothari/default/bin/torchrun", "--nproc_per_node=4", "train.py"]
+          command: ["vllm", "serve", "/sadata/nikkothari/kai-scheduler-lab/.cache/gemma-4-E2B-it", "--port", "8000"]
           env:
             - name: HOME
               value: /sadata/nikkothari/kai-scheduler-lab/.cache/home
@@ -46,17 +48,11 @@ spec:
               value: "1"
           resources:
             claims:
-              - name: gpus
+              - name: gpu
           volumeMounts:
             - name: sadata
               mountPath: /sadata/nikkothari
-            - name: shm
-              mountPath: /dev/shm
       volumes:
         - name: sadata
           persistentVolumeClaim:
             claimName: req-688-nikkothari-sadata-pvc
-        # NCCL needs more shared memory than the 64 MB a pod gets by default
-        - name: shm
-          emptyDir:
-            medium: Memory

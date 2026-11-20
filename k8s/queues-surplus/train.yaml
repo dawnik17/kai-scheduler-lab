@@ -1,7 +1,7 @@
 apiVersion: resource.k8s.io/v1
 kind: ResourceClaimTemplate
 metadata:
-  name: infer-burst-gpu
+  name: train-gpu
 spec:
   spec:
     devices:
@@ -9,35 +9,33 @@ spec:
         - name: gpu
           exactly:
             deviceClassName: gpu.nvidia.com
+            count: 2
 ---
-# vLLM servers that an autoscaler would add under load; scale them by hand with kubectl scale.
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: infer-burst
+  name: train
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: infer-burst
+  backoffLimit: 100
   template:
     metadata:
       labels:
-        app: infer-burst
-        # KAI gives Deployments the non-preemptible "inference" priority by default, which default-queue rejects
-        priorityClassName: build-preemptible
+        kai.scheduler/queue: poc2-batch
+        priorityClassName: train
     spec:
       schedulerName: kai-scheduler
+      restartPolicy: Never
       securityContext:
         runAsUser: 2572
         runAsGroup: 2572
       resourceClaims:
         - name: gpu
-          resourceClaimTemplateName: infer-burst-gpu
+          resourceClaimTemplateName: train-gpu
       containers:
-        - name: vllm
+        - name: train
           image: vllm/vllm-openai:v0.32.0
-          command: ["vllm", "serve", "/sadata/nikkothari/kai-scheduler-lab/.cache/gemma-4-E2B-it", "--port", "8000"]
+          workingDir: /sadata/nikkothari/kai-scheduler-lab/train
+          command: ["/sadata/nikkothari/default/bin/torchrun", "--nproc_per_node=2", "train.py"]
           env:
             - name: HOME
               value: /sadata/nikkothari/kai-scheduler-lab/.cache/home
@@ -52,7 +50,13 @@ spec:
           volumeMounts:
             - name: sadata
               mountPath: /sadata/nikkothari
+            - name: shm
+              mountPath: /dev/shm
       volumes:
         - name: sadata
           persistentVolumeClaim:
             claimName: req-688-nikkothari-sadata-pvc
+        # NCCL needs more shared memory than the 64 MB a pod gets by default
+        - name: shm
+          emptyDir:
+            medium: Memory
