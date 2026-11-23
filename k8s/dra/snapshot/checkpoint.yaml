@@ -1,0 +1,67 @@
+# Dynamo stores checkpoints on this claim; the cluster's operator is configured to look for this name
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dynamo-snapshot-pvc
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: sadata-path
+  resources:
+    requests:
+      storage: 200Gi
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: gemma-checkpoint-gpu
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          exactly:
+            deviceClassName: gpu.nvidia.com
+---
+# Starts one Gemma worker, waits until it is warmed up, and checkpoints it once.
+# The pod spec must match the worker in infer-burst.yaml, since restored pods resume this exact process.
+apiVersion: nvidia.com/v1alpha1
+kind: DynamoCheckpoint
+metadata:
+  name: gemma3-4b
+spec:
+  identity:
+    model: gemma-3-4b-it
+    backendFramework: vllm
+  job:
+    activeDeadlineSeconds: 3600
+    podTemplateSpec:
+      metadata:
+        labels:
+          kai.scheduler/queue: poc1
+          priorityClassName: inference
+      spec:
+        schedulerName: kai-scheduler
+        # Restores need the same GPU model, driver and CPU as the checkpoint
+        nodeSelector:
+          kubernetes.io/hostname: exp-blr-dgxa100-05
+        resourceClaims:
+          - name: gpu
+            resourceClaimTemplateName: gemma-checkpoint-gpu
+        containers:
+          - name: main
+            image: ghcr.io/dawnik17/dynamo-vllm-placeholder:1.2.1
+            command: ["python3", "-m", "dynamo.vllm"]
+            args: ["--model", "/sadata/nikkothari/kai-scheduler-lab/.cache/gemma-3-4b-it", "--served-model-name", "gemma-3-4b-it", "--enable-multimodal"]
+            env:
+              - name: HF_HUB_OFFLINE
+                value: "1"
+            resources:
+              claims:
+                - name: gpu
+            volumeMounts:
+              - name: sadata
+                mountPath: /sadata/nikkothari
+        volumes:
+          - name: sadata
+            persistentVolumeClaim:
+              claimName: req-711-nikkothari-sadata-pvc

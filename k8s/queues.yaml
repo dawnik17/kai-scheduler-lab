@@ -1,0 +1,102 @@
+apiVersion: scheduling.run.ai/v2
+kind: Queue
+metadata:
+  name: poc1-parent
+spec:
+  resources:
+    cpu:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+    gpu:
+      quota: 8
+      limit: 8
+      overQuotaWeight: 1
+    memory:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+---
+apiVersion: scheduling.run.ai/v2
+kind: Queue
+metadata:
+  name: poc1
+spec:
+  parentQueue: poc1-parent
+  resources:
+    cpu:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+    gpu:
+      quota: 8
+      limit: 8
+      overQuotaWeight: 1
+    memory:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+---
+# poc2 owns the node's 8 GPUs. Each child is guaranteed 2; the other 4 are surplus.
+apiVersion: scheduling.run.ai/v2
+kind: Queue
+metadata:
+  name: poc2
+spec:
+  resources:
+    cpu:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+    gpu:
+      quota: 8
+      limit: 8
+      overQuotaWeight: 1
+    memory:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+---
+# Batch gets its 2 guaranteed GPUs and may use the surplus.
+apiVersion: scheduling.run.ai/v2
+kind: Queue
+metadata:
+  name: poc2-batch
+spec:
+  parentQueue: poc2
+  priority: 100
+  resources:
+    cpu:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+    gpu:
+      quota: 2
+      limit: -1
+      overQuotaWeight: 1
+    memory:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+---
+# Inference gets its 2 guaranteed GPUs and takes the surplus first (priority above the default 100).
+apiVersion: scheduling.run.ai/v2
+kind: Queue
+metadata:
+  name: poc2-infer
+spec:
+  parentQueue: poc2
+  priority: 200
+  resources:
+    cpu:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+    gpu:
+      quota: 2
+      limit: -1
+      overQuotaWeight: 1
+    memory:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1

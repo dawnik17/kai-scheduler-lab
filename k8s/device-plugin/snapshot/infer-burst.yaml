@@ -1,0 +1,86 @@
+# An OpenAI-compatible frontend plus Gemma workers that start from the gemma3-4b checkpoint
+# instead of loading the model. Scale the workers through the infer-burst-worker scaling adapter.
+apiVersion: nvidia.com/v1beta1
+kind: DynamoGraphDeployment
+metadata:
+  name: infer-burst
+  annotations:
+    # Plain Deployments, so KAI schedules each worker like the vLLM servers in k8s/queues-surplus
+    nvidia.com/enable-grove: "false"
+spec:
+  backendFramework: vllm
+  components:
+    - name: Frontend
+      type: frontend
+      replicas: 1
+      podTemplate:
+        spec:
+          # Reads the tokenizer from the model folder, which only uid 2572 can open
+          securityContext:
+            runAsUser: 2572
+            runAsGroup: 2572
+          containers:
+            - name: main
+              image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.1
+              env:
+                - name: HOME
+                  value: /tmp
+              volumeMounts:
+                - name: sadata
+                  mountPath: /sadata/nikkothari
+                  readOnly: true
+          volumes:
+            - name: sadata
+              persistentVolumeClaim:
+                claimName: req-708-nikkothari-sadata-pvc
+    - name: worker
+      type: worker
+      replicas: 0
+      scalingAdapter: {}
+      experimental:
+        checkpoint:
+          mode: Manual
+          checkpointRef: gemma3-4b
+      podTemplate:
+        metadata:
+          labels:
+            kai.scheduler/queue: poc1
+            priorityClassName: inference
+        spec:
+          schedulerName: kai-scheduler
+          # A restored worker never gets SIGTERM, so scale-down would otherwise wait the default 60 s
+          terminationGracePeriodSeconds: 5
+          nodeSelector:
+            kubernetes.io/hostname: exp-blr-dgxa100-01
+          containers:
+            - name: main
+              image: ghcr.io/dawnik17/dynamo-vllm-placeholder:1.2.1
+              command: ["python3", "-m", "dynamo.vllm"]
+              args: ["--model", "/sadata/nikkothari/kai-scheduler-lab/.cache/gemma-3-4b-it", "--served-model-name", "gemma-3-4b-it", "--enable-multimodal"]
+              env:
+                - name: HF_HUB_OFFLINE
+                  value: "1"
+              resources:
+                limits:
+                  nvidia.com/gpu: 1
+              # The operator defaults poll every 10 s, which would hide most of the restore speed-up
+              startupProbe:
+                httpGet:
+                  path: /live
+                  port: system
+                periodSeconds: 1
+                timeoutSeconds: 1
+                failureThreshold: 7200
+              readinessProbe:
+                httpGet:
+                  path: /health
+                  port: system
+                periodSeconds: 1
+                timeoutSeconds: 1
+              volumeMounts:
+                - name: sadata
+                  mountPath: /sadata/nikkothari
+          volumes:
+            - name: sadata
+              persistentVolumeClaim:
+                claimName: req-708-nikkothari-sadata-pvc

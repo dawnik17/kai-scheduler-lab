@@ -1,0 +1,50 @@
+# vLLM servers that an autoscaler would add under load; scale them by hand with kubectl scale.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infer-burst-vllm
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: infer-burst-vllm
+  template:
+    metadata:
+      labels:
+        app: infer-burst-vllm
+        kai.scheduler/queue: poc1
+        priorityClassName: inference
+    spec:
+      schedulerName: kai-scheduler
+      securityContext:
+        runAsUser: 2572
+        runAsGroup: 2572
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.32.0
+          command: ["vllm", "serve", "/sadata/nikkothari/kai-scheduler-lab/.cache/gemma-3-4b-it", "--port", "8000"]
+          env:
+            - name: HOME
+              value: /sadata/nikkothari/kai-scheduler-lab/.cache/home
+            # uid 2572 has no user entry in the image, and torch needs a username
+            - name: USER
+              value: nikkothari
+            - name: HF_HUB_OFFLINE
+              value: "1"
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          # Without this, pods report Ready as soon as the container starts, ~2 min before vLLM can serve
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 1
+            timeoutSeconds: 1
+          volumeMounts:
+            - name: sadata
+              mountPath: /sadata/nikkothari
+      volumes:
+        - name: sadata
+          persistentVolumeClaim:
+            claimName: req-708-nikkothari-sadata-pvc

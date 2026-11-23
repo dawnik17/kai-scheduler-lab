@@ -1,0 +1,58 @@
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: infer-gpu
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          exactly:
+            deviceClassName: gpu.nvidia.com
+---
+# Baseline vLLM servers on inference's 2 guaranteed GPUs: non-preemptible.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: infer
+  template:
+    metadata:
+      labels:
+        app: infer
+        kai.scheduler/queue: poc2-infer
+        priorityClassName: inference
+    spec:
+      schedulerName: kai-scheduler
+      securityContext:
+        runAsUser: 2572
+        runAsGroup: 2572
+      resourceClaims:
+        - name: gpu
+          resourceClaimTemplateName: infer-gpu
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.32.0
+          command: ["vllm", "serve", "/sadata/nikkothari/kai-scheduler-lab/.cache/gemma-3-4b-it", "--port", "8000"]
+          env:
+            - name: HOME
+              value: /sadata/nikkothari/kai-scheduler-lab/.cache/home
+            # uid 2572 has no user entry in the image, and torch needs a username
+            - name: USER
+              value: nikkothari
+            - name: HF_HUB_OFFLINE
+              value: "1"
+          resources:
+            claims:
+              - name: gpu
+          volumeMounts:
+            - name: sadata
+              mountPath: /sadata/nikkothari
+      volumes:
+        - name: sadata
+          persistentVolumeClaim:
+            claimName: req-711-nikkothari-sadata-pvc
